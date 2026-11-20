@@ -76,7 +76,10 @@ public class MainActivity extends Activity {
         if (text == null || text.trim().isEmpty()) {
             output.setText("No OCR text yet. Keep Quotex visible and try again.");
         } else {
-            output.setText("Latest screen text:\n\n" + text);
+            String scan = getSharedPreferences("cortex", MODE_PRIVATE)
+                .getString("last_candle_scan", "Waiting for chart scan...");
+            output.setText("Latest screen text:\n\n" + text
+                + "\n\nCANDLE PIXEL SCAN:\n" + scan);
         }
     }
 

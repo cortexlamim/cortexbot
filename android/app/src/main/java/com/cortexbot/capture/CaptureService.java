@@ -114,6 +114,10 @@ public class CaptureService extends Service {
             image.close();
             image = null;
 
+            String candleScan = scanCandlePixels(bitmap);
+            getSharedPreferences("cortex", MODE_PRIVATE).edit()
+                .putString("last_candle_scan", candleScan).apply();
+
             InputImage input = InputImage.fromBitmap(bitmap, 0);
 
             recognizer.process(input)
@@ -137,6 +141,44 @@ public class CaptureService extends Service {
             processing = false;
             if (image != null) image.close();
         }
+    }
+
+
+    private String scanCandlePixels(Bitmap bitmap) {
+        int w = bitmap.getWidth();
+        int h = bitmap.getHeight();
+        int left = w / 12, right = w * 11 / 12;
+        int top = h / 4, bottom = h * 3 / 4;
+        boolean[] greenCols = new boolean[right - left];
+        boolean[] redCols = new boolean[right - left];
+        long green = 0, red = 0;
+        float[] hsv = new float[3];
+
+        for (int y = top; y < bottom; y += 2) {
+            for (int x = left; x < right; x += 2) {
+                Color.colorToHSV(bitmap.getPixel(x, y), hsv);
+                if (hsv[1] < 0.35f || hsv[2] < 0.20f) continue;
+                int col = x - left;
+                if (hsv[0] >= 70 && hsv[0] <= 170) {
+                    green++;
+                    greenCols[col] = true;
+                } else if (hsv[0] <= 15 || hsv[0] >= 345) {
+                    red++;
+                    redCols[col] = true;
+                }
+            }
+        }
+
+        int gc = 0, rc = 0;
+        for (int i = 0; i < greenCols.length; i++) {
+            if (greenCols[i]) gc++;
+            if (redCols[i]) rc++;
+        }
+        return "Screen: " + w + "x" + h
+            + "\nGreen pixels: " + green
+            + "\nRed pixels: " + red
+            + "\nGreen columns: " + gc
+            + "\nRed columns: " + rc;
     }
 
     private void createNotification() {
