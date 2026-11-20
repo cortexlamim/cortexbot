@@ -12,6 +12,7 @@ import android.widget.TextView;
 public class MainActivity extends Activity {
     private static final int CAPTURE_REQUEST = 1001;
     private TextView status;
+    private TextView output;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -22,13 +23,24 @@ public class MainActivity extends Activity {
         layout.setPadding(32, 48, 32, 32);
 
         status = new TextView(this);
-        status.setText("CORTEX Screen Capture is ready");
+        status.setText("CORTEX Screen Capture");
         status.setTextSize(18);
         layout.addView(status);
 
         Button start = new Button(this);
         start.setText("Start Screen Capture");
         layout.addView(start);
+
+        output = new TextView(this);
+        output.setTextSize(15);
+        output.setText("OCR text will appear here.");
+        layout.addView(output);
+
+        Button read = new Button(this);
+        read.setText("Read Chart Text");
+        layout.addView(read);
+
+        read.setOnClickListener(v -> showLatestText());
 
         start.setOnClickListener(v -> {
             MediaProjectionManager manager =
@@ -39,6 +51,16 @@ public class MainActivity extends Activity {
         });
 
         setContentView(layout);
+    }
+
+    private void showLatestText() {
+        String text = getSharedPreferences("cortex", MODE_PRIVATE)
+            .getString("last_ocr_text", "");
+        if (text == null || text.trim().isEmpty()) {
+            output.setText("No OCR text yet. Keep Quotex visible and try again.");
+        } else {
+            output.setText("Latest screen text:\n\n" + text);
+        }
     }
 
     @Override
