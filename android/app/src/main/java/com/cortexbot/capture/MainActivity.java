@@ -3,6 +3,9 @@ package com.cortexbot.capture;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ClipboardManager;
+import android.content.ClipData;
+import android.widget.Toast;
 import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.widget.Button;
@@ -41,6 +44,20 @@ public class MainActivity extends Activity {
         layout.addView(read);
 
         read.setOnClickListener(v -> showLatestText());
+
+        Button copy = new Button(this);
+        copy.setText("Copy OCR Text");
+        layout.addView(copy);
+        copy.setOnClickListener(v -> {
+            String text = getSharedPreferences("cortex", MODE_PRIVATE).getString("last_ocr_text", "");
+            if (text == null || text.trim().isEmpty()) {
+                Toast.makeText(this, "No OCR text available", Toast.LENGTH_SHORT).show();
+            } else {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                clipboard.setPrimaryClip(ClipData.newPlainText("CORTEX OCR", text));
+                Toast.makeText(this, "OCR text copied", Toast.LENGTH_SHORT).show();
+            }
+        });
 
         start.setOnClickListener(v -> {
             MediaProjectionManager manager =
