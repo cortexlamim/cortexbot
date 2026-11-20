@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cortex AI Signal Bot</title>
+<style>
+body{margin:0;background:#101827;color:white;font-family:Arial;padding:18px}
+.box{background:#1d2b43;padding:18px;border-radius:14px;margin:15px 0}
+h2{color:#54a8ff}
+select,input,button{width:100%;padding:13px;margin:8px 0;border-radius:8px;border:0;font-size:16px}
+button{background:#1677ee;color:white;font-weight:bold}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#a9eaff}
+.history-item{padding:10px;margin:7px 0;border-radius:8px;background:#26364d;font-size:13px}
+.history-call{border-left:4px solid #22c55e;color:#86efac}
+.history-put{border-left:4px solid #ef4444;color:#fca5a5}
+.history-no-trade{border-left:4px solid #eab308;color:#fde68a}
+.small{color:#aebbd0;font-size:13px}
+</style>
+</head>
+<body>
+<h2>⚡ CORTEX AI SIGNAL BOT</h2>
+<p class="small">REAL MARKET ANALYSIS | MANUAL TRADING</p>
+
+<div class="box">
+<h3>Select Market</h3>
+<select id="market" onchange="marketChanged()">
+<option value="REAL">REAL MARKET</option>
+<option value="OTC">OTC MARKET</option>
+</select>
+<h3 id="pairLabel">Select Real Pair</h3>
+<select id="pair"></select>
+
+<h3>Timeframe</h3>
+<select id="time">
+<option>1min</option>
+<option>5min</option>
+<option>15min</option>
+<option>30min</option>
+<option>1h</option>
+<option>4h</option>
+</select>
+
+<button onclick="analyse()">ANALYSE MARKET</button>
+<pre id="result">Waiting for real market data...</pre>
+<h3>Signal History</h3>
+<div id="history">No signals yet</div>
+</div>
+
+<div class="box">
+<h3>OTC Market</h3>
+<button onclick="otc()">CHECK OTC DATA</button>
+<pre id="otcresult">OTC DATA NOT CONNECTED</pre>
+</div>
+
+<div class="box">
+<h3>Risk Management</h3>
+<label>Balance ($)</label>
+<input id="balance" type="number" value="54">
+<label>Entry Amount ($)</label>
+<input id="stake" type="number" value="0.50" step="0.01">
+<label>Daily Loss Limit ($)</label>
+<input id="limit" type="number" value="1.62" step="0.01">
+<pre id="risk"></pre>
+<button onclick="risk()">CALCULATE RISK</button>
+</div>
+
+<script>
+function renderHistory(items){const h=document.getElementById("history");h.innerHTML="";if(!items.length){h.textContent="No signals yet";return;}items.forEach(v=>{const item=document.createElement("div");const m=v.match(/\|\s*(CALL|PUT|NO TRADE)\s*\|/);const signal=m?m[1]:"";item.className="history-item "+(signal==="CALL"?"history-call":signal==="PUT"?"history-put":"history-no-trade");item.textContent=v;h.appendChild(item);});}
+function marketChanged(){const otc=document.getElementById("market").value==="OTC";const pairs=otc?["EUR/USD OTC","GBP/USD OTC","USD/JPY OTC","AUD/USD OTC","USD/CAD OTC","EUR/JPY OTC","GBP/JPY OTC","NZD/USD OTC"]:["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","EUR/JPY","GBP/JPY","NZD/USD"];document.getElementById("pairLabel").textContent=otc?"Select OTC Pair":"Select Real Pair";document.getElementById("pair").innerHTML=pairs.map(p=>"<option>"+p+"</option>").join("");document.getElementById("result").textContent=otc?"OTC DATA PROVIDER REQUIRED":"Waiting for real market data...";}marketChanged();
+async function analyse(){
+const result=document.getElementById("result");
+result.textContent="Connecting to selected market...";
+try{
+const market=document.getElementById("market").value;
+const pair=document.getElementById("pair").value;
+const time=document.getElementById("time").value;
+const endpoint=market==="OTC"?`/api/otc?symbol=${encodeURIComponent(pair)}&interval=${encodeURIComponent(time)}`:`/api/analyze?symbol=${encodeURIComponent(pair)}&interval=${encodeURIComponent(time)}`;
+const response=await fetch(endpoint);
+const data=await response.json();
+if(!response.ok) throw Error(data.message || data.status);
+result.textContent=JSON.stringify(data,null,2);
+if(data.signal){const items=JSON.parse(localStorage.getItem("cortexSignalHistory")||"[]");items.unshift(new Date().toLocaleString()+" | "+pair+" | "+time+" | "+data.signal+" | Score: "+data.score);const saved=items.slice(0,30);localStorage.setItem("cortexSignalHistory",JSON.stringify(saved));renderHistory(saved);}
+}catch(e){
+result.textContent="NO DATA / NO TRADE\n"+e.message;
+}
+}
+async function otc(){
+const response=await fetch("/api/otc");
+const data=await response.json();
+document.getElementById("otcresult").textContent=JSON.stringify(data,null,2);
+}
+function risk(){
+const b=Number(document.getElementById("balance").value);
+const s=Number(document.getElementById("stake").value);
+const l=Number(document.getElementById("limit").value);
+document.getElementById("risk").textContent=
+"Entry: $"+s.toFixed(2)+
+"\nBalance risk: "+(b>0?(s/b*100).toFixed(2):"0")+"%"+
+"\nDaily loss limit: $"+l.toFixed(2)+
+"\nDaily loss percentage: "+(b>0?(l/b*100).toFixed(2):"0")+"%";
+}
+renderHistory(JSON.parse(localStorage.getItem("cortexSignalHistory")||"[]"));
+risk();
+</script>
+</body>
+</html>
