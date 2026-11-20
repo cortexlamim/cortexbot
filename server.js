@@ -197,7 +197,7 @@ app.get("/api/analyze", async (req, res) => {
   }
 });
 
-app.listen(3000, "0.0.0.0", () => {
+app.listen(process.env.PORT || 3000, "0.0.0.0", () => {
   console.log("Cortex Bot running at http://localhost:3000");
 });
 
