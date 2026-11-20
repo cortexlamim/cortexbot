@@ -145,40 +145,65 @@ public class CaptureService extends Service {
 
 
     private String scanCandlePixels(Bitmap bitmap) {
-        int w = bitmap.getWidth();
-        int h = bitmap.getHeight();
-        int left = w / 12, right = w * 11 / 12;
-        int top = h / 4, bottom = h * 3 / 4;
-        boolean[] greenCols = new boolean[right - left];
-        boolean[] redCols = new boolean[right - left];
-        long green = 0, red = 0;
+        int w = bitmap.getWidth(), h = bitmap.getHeight();
+        int left = w * 5 / 100, right = w * 88 / 100;
+        int top = h * 38 / 100, bottom = h * 82 / 100;
+        int step = 2;
+        int n = (right - left + 1) / step;
+        int[] red = new int[n], green = new int[n];
+        int[] minY = new int[n], maxY = new int[n];
+        java.util.Arrays.fill(minY, h);
+        java.util.Arrays.fill(maxY, -1);
         float[] hsv = new float[3];
 
-        for (int y = top; y < bottom; y += 2) {
-            for (int x = left; x < right; x += 2) {
+        for (int x = left; x < right; x += step) {
+            int c = (x - left) / step;
+            for (int y = top; y < bottom; y += step) {
                 Color.colorToHSV(bitmap.getPixel(x, y), hsv);
                 if (hsv[1] < 0.35f || hsv[2] < 0.20f) continue;
-                int col = x - left;
-                if (hsv[0] >= 70 && hsv[0] <= 170) {
-                    green++;
-                    greenCols[col] = true;
-                } else if (hsv[0] <= 15 || hsv[0] >= 345) {
-                    red++;
-                    redCols[col] = true;
-                }
+                boolean g = hsv[0] >= 70 && hsv[0] <= 170;
+                boolean r = hsv[0] <= 15 || hsv[0] >= 345;
+                if (!g && !r) continue;
+                if (g) green[c]++; else red[c]++;
+                minY[c] = Math.min(minY[c], y);
+                maxY[c] = Math.max(maxY[c], y);
             }
         }
 
-        int gc = 0, rc = 0;
-        for (int i = 0; i < greenCols.length; i++) {
-            if (greenCols[i]) gc++;
-            if (redCols[i]) rc++;
+        StringBuilder out = new StringBuilder("Chart region scan");
+        int found = 0, i = 0;
+        while (i < n && found < 60) {
+            if (red[i] + green[i] < 2) { i++; continue; }
+            int first = i, last = i, reds = 0, greens = 0;
+            int y1 = h, y2 = -1, gap = 0;
+            while (i < n) {
+                if (red[i] + green[i] < 2) {
+                    if (++gap > 1) break;
+                } else {
+                    gap = 0;
+                    last = i;
+                    reds += red[i]; greens += green[i];
+                    y1 = Math.min(y1, minY[i]);
+                    y2 = Math.max(y2, maxY[i]);
+                }
+                i++;
+            }
+            int width = (last - first + 1) * step;
+            int height = y2 - y1;
+            if (width <= 36 && height >= 8 && reds + greens >= 5) {
+                out.append("\nCandidate ").append(++found)
+                   .append(": ").append(greens > reds ? "GREEN" : "RED")
+                   .append(" x=").append(left + first * step)
+                   .append("-").append(left + last * step)
+                   .append(" y=").append(y1).append("-").append(y2)
+                   .append(" height=").append(height);
+            }
+            if (i <= first) i = first + 1;
         }
-        return "Screen: " + w + "x" + h
-            + "\nGreen pixels: " + green
-            + "\nRed pixels: " + red
-            + "\nGreen columns: " + gc
-            + "\nRed columns: " + rc;
+        if (found == 0) out.append("\nNo candidates detected");
+        out.append("\nTotal candidates: ").append(found)
+           .append("\nApproximate scan only; not verified OHLC candles.");
+        return out.toString();
     }
 
     private void createNotification() {
