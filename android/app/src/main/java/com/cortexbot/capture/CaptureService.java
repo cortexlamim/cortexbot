@@ -3,6 +3,7 @@ package com.cortexbot.capture;
 import android.app.*;
 import android.content.*;
 import android.content.pm.ServiceInfo;
+import android.graphics.*;
 import android.graphics.PixelFormat;
 import android.hardware.display.*;
 import android.media.*;
@@ -10,11 +11,22 @@ import android.media.projection.*;
 import android.os.*;
 import android.view.WindowManager;
 import android.util.DisplayMetrics;
+import android.util.Log;
+
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.TextRecognizer;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
+
+import java.nio.ByteBuffer;
 
 public class CaptureService extends Service {
     private MediaProjection projection;
     private VirtualDisplay display;
     private ImageReader reader;
+    private TextRecognizer recognizer;
+    private long lastScan = 0;
+    private boolean processing = false;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -35,9 +47,11 @@ public class CaptureService extends Service {
             return START_NOT_STICKY;
         }
 
+        recognizer = TextRecognition.getClient(
+            TextRecognizerOptions.DEFAULT_OPTIONS);
+
         MediaProjectionManager manager =
             (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-
         projection = manager.getMediaProjection(resultCode, data);
 
         DisplayMetrics metrics = new DisplayMetrics();
@@ -49,7 +63,7 @@ public class CaptureService extends Service {
         int density = metrics.densityDpi;
 
         reader = ImageReader.newInstance(
-            width, height, PixelFormat.RGBA_8888, 2);
+            width, height, PixelFormat.RGBA_8888, 3);
 
         projection.registerCallback(new MediaProjection.Callback() {
             @Override
@@ -60,19 +74,69 @@ public class CaptureService extends Service {
         }, null);
 
         display = projection.createVirtualDisplay(
-            "CORTEX-Capture",
-            width, height, density,
+            "CORTEX-Capture", width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             reader.getSurface(), null, null);
 
-        reader.setOnImageAvailableListener(r -> {
-            Image image = r.acquireLatestImage();
-            if (image != null) {
-                image.close();
-            }
-        }, null);
-
+        reader.setOnImageAvailableListener(r -> scanScreen(r), null);
         return START_NOT_STICKY;
+    }
+
+    private void scanScreen(ImageReader source) {
+        Image image = null;
+        try {
+            image = source.acquireLatestImage();
+            if (image == null) return;
+
+            long now = SystemClock.elapsedRealtime();
+            if (processing || now - lastScan < 1500) {
+                image.close();
+                return;
+            }
+
+            lastScan = now;
+            processing = true;
+
+            Image.Plane plane = image.getPlanes()[0];
+            ByteBuffer buffer = plane.getBuffer();
+            int pixelStride = plane.getPixelStride();
+            int rowStride = plane.getRowStride();
+            int paddedWidth = rowStride / pixelStride;
+
+            Bitmap padded = Bitmap.createBitmap(
+                paddedWidth, image.getHeight(), Bitmap.Config.ARGB_8888);
+            padded.copyPixelsFromBuffer(buffer);
+
+            Bitmap bitmap = Bitmap.createBitmap(
+                padded, 0, 0, image.getWidth(), image.getHeight());
+            padded.recycle();
+
+            image.close();
+            image = null;
+
+            InputImage input = InputImage.fromBitmap(bitmap, 0);
+
+            recognizer.process(input)
+                .addOnSuccessListener(result -> {
+                    String text = result.getText();
+                    getSharedPreferences("cortex", MODE_PRIVATE)
+                        .edit().putString("last_ocr_text", text)
+                        .putLong("last_ocr_time", System.currentTimeMillis())
+                        .apply();
+                    Log.d("CORTEX_OCR", text);
+                })
+                .addOnFailureListener(e ->
+                    Log.e("CORTEX_OCR", "OCR failed", e))
+                .addOnCompleteListener(task -> {
+                    bitmap.recycle();
+                    processing = false;
+                });
+
+        } catch (Exception e) {
+            Log.e("CORTEX_CAPTURE", "Frame error", e);
+            processing = false;
+            if (image != null) image.close();
+        }
     }
 
     private void createNotification() {
@@ -91,7 +155,7 @@ public class CaptureService extends Service {
             : new Notification.Builder(this);
 
         return builder.setContentTitle("CORTEX Capture")
-            .setContentText("Screen capture is active")
+            .setContentText("Reading visible screen text")
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .build();
     }
@@ -104,6 +168,10 @@ public class CaptureService extends Service {
         if (reader != null) {
             reader.close();
             reader = null;
+        }
+        if (recognizer != null) {
+            recognizer.close();
+            recognizer = null;
         }
     }
 
